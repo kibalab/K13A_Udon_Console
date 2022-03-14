@@ -10,9 +10,9 @@ namespace K13A.KDebug
     [UdonBehaviourSyncMode(BehaviourSyncMode.Manual)]
     public class UserNetworkUnit : UdonSharpBehaviour
     {
-        [UdonSynced, HideInInspector, FieldChangeCallback(nameof(NetworkLog))] public string m_NetworkLog = "";
+        [UdonSynced(UdonSyncMode.None), HideInInspector, FieldChangeCallback(nameof(NetworkLog))] public string m_NetworkLog = "";
         public KDebug Debug;
-        [UdonSynced, HideInInspector, FieldChangeCallback(nameof(UserID))] public int OwnerID = -1;
+        [UdonSynced(UdonSyncMode.None), HideInInspector, FieldChangeCallback(nameof(UserID))] public int OwnerID = -1;
         public string ColorCode = "";
 
         public string receivedLog = "";
@@ -23,7 +23,7 @@ namespace K13A.KDebug
         {
             set
             {
-                receivedLog += Debug.CutLogs(value, Debug.AllowStringCount - 500);
+                receivedLog += value;
 
                 Debug.m_NetworkLog(value);
                 m_NetworkLog = value;
@@ -37,8 +37,8 @@ namespace K13A.KDebug
             set
             {
                 m_NetworkLog = value;
-                receivedLog += Debug.CutLogs(value, Debug.AllowStringCount - 500);
-                Debug.AllLogs += Debug.CutLogs(value, Debug.AllowStringCount - 500);
+                receivedLog += value;
+                Debug.AllLogs += value;
             }
         }
 
@@ -52,12 +52,17 @@ namespace K13A.KDebug
 
                 if(player == null)
                 {
-                    Debug.LogError(this, $"Debug Network Unit is broken");
+                    player = Networking.GetOwner(gameObject);
+                    Debug.LogError(this, $"Debug Network Unit is broken ID : {value}, Current Owner : {player.displayName}.{player.playerId}");
+                    return;
                 }
-
+                Debug.Log(this, $"Initialize Network Unit | {player.displayName}.{value}");
                 Debug.Log(this, $"Debug Network Unit is ready");
 
-                Debug.FilterDropDown.AddItem($"{player.displayName}.{player.playerId}", this);
+                if(!Debug.FilterDropDown.IsExists(this))
+                    Debug.FilterDropDown.AddItem($"{player.displayName}.{player.playerId}", this);
+                else
+                    Debug.Log(this, $"Network Unit already exists.");
             }
         }
 
@@ -73,16 +78,38 @@ namespace K13A.KDebug
             RequestSerialization();
         }
 
-        public void init()
+        public void Init()
         {
+            ResetUnit();
             ColorCode = $"#{hex[Random.Range(0, 7)]}{hex[Random.Range(0, 7)]}{hex[Random.Range(0, 7)]}{hex[Random.Range(0, 7)]}{hex[Random.Range(0, 7)]}{hex[Random.Range(0, 7)]}";
-
-            
         }
 
         public void ClearLog()
         {
             receivedLog = "";
+        }
+
+        public void ResetUnit()
+        {
+            ClearLog();
+            OwnerID = -1;
+            ColorCode = "";
+            m_NetworkLog = "";
+
+            SendCustomNetworkEvent(VRC.Udon.Common.Interfaces.NetworkEventTarget.All, nameof(ClearLog));
+
+            Debug.Log(this, $"Reset NetworkUnit | OwnerID: {OwnerID}");
+        }
+
+        public override string ToString()
+        {
+            var player = VRCPlayerApi.GetPlayerById(OwnerID);
+            return $"[UNU({OwnerID}, {ColorCode})]";
+        }
+
+        public void LogSelf()
+        {
+            Debug.Log(this, ToString());
         }
     }
 

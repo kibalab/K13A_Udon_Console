@@ -19,6 +19,7 @@ namespace K13A.KDebug
         public string warnColor = "orange";
         public string errorColor = "red";
 
+        [UdonSynced(UdonSyncMode.None), FieldChangeCallback(nameof(RequestNextProcess))] public int ReadyPlayerID = 0;
 
         public int AllowStringCount = 5000;
 
@@ -40,9 +41,33 @@ namespace K13A.KDebug
 
         public override void OnPlayerJoined(VRCPlayerApi player)
         {
-            //if(!player.Equals(Networking.LocalPlayer))
-            CheckPool();
-            IsPause = false;
+            if (player.playerId == 1)
+            {
+                RequestNextProcess++;
+            }
+        }
+
+        public int RequestNextProcess
+        {
+            set
+            {
+                ReadyPlayerID = value;
+
+                CheckIsProcessable();
+
+                RequestSerialization();
+            }
+
+            get => ReadyPlayerID;
+        }
+
+        public void CheckIsProcessable()
+        {
+            if (ReadyPlayerID + 1 == Networking.LocalPlayer.playerId)
+            {
+                CheckPool();
+                IsPause = false;
+            }
         }
 
         public bool IsPause
@@ -59,7 +84,7 @@ namespace K13A.KDebug
                 }
                 else
                 {
-                    logText.text += CutLogs(PausedLogs, AllowStringCount - 500);
+                    logText.text += CutLogs(PausedLogs, AllowStringCount);
                 }
             }
 
@@ -86,9 +111,11 @@ namespace K13A.KDebug
                 switch (FilterDropDown.SelectedID)
                 {
                     case 0:
+                        NetworkUnit.receivedLog = CutLogs(NetworkUnit.receivedLog, AllowStringCount);
                         logText.text = NetworkUnit.receivedLog;
                         break;
                     case 1:
+                        AllLogs = CutLogs(AllLogs, AllowStringCount);
                         logText.text = AllLogs;
                         break;
                     default:
@@ -101,10 +128,10 @@ namespace K13A.KDebug
                             GlobalAlrt(this, "-------------------------------------------------------" + FilterDropDown.SelectedID);
                             break;
                         }
+                        unit.receivedLog = CutLogs(unit.receivedLog, AllowStringCount);
                         logText.text = unit.receivedLog;
                         break;
                 }
-
             }
 
             if (Networking.LocalPlayer == null) return;
@@ -191,14 +218,14 @@ namespace K13A.KDebug
 
         private string m_LogError(string className, string msg)
         {
-            msg = $"<color=green>[{DateTime.Now.ToString("HH:mm:ss.ff")}]</color> | <color={errorColor}>[{className}] {msg}</color>\n";
+            msg = $"<color=green>[{DateTime.Now.ToString("HH:mm:ss.ff")}]</color> | <color={errorColor}>[{className}] {msg}</color>~\n";
 
             return msg;
         }
 
         public string m_NetworkLog(string msg)
         {
-            AllLogs = CutLogs(AllLogs + msg, AllowStringCount - 500);
+            AllLogs = AllLogs + msg;
 
             return msg;
         }
@@ -207,7 +234,7 @@ namespace K13A.KDebug
         {
             msg = $"<color=green>[{DateTime.Now.ToString("HH:mm:ss.ff")}]</color> | <color={errorColor}>[{((UdonSharpBehaviour)classObject).GetUdonTypeName()}] {msg}</color>\n";
 
-            logText.text  = CutLogs(logText.text + msg, AllowStringCount - 500);
+            logText.text  = logText.text + msg;
 
             return msg;
         }
@@ -215,11 +242,14 @@ namespace K13A.KDebug
         public void Clear()
         {
             AllLogs = "";
-            NetworkUnit.ClearLog();
-            foreach (var unit in OthersUnits)
+            if (NetworkUnit != null)
             {
-                if (unit == null) return;
-                unit.ClearLog();
+                NetworkUnit.ClearLog();
+                foreach (var unit in OthersUnits)
+                {
+                    if (unit == null) return;
+                    unit.ClearLog();
+                }
             }
             Log(this, "Log All Clear");
         }
@@ -232,18 +262,35 @@ namespace K13A.KDebug
         private void LateUpdate()
         {
             CountText.text = $"{logText.text.Length} / <size=7>{AllowStringCount}</size>";
+
+            if(NetworkUnit != null && Networking.LocalPlayer != null)
+            {
+                if (NetworkUnit.OwnerID != Networking.LocalPlayer.playerId)
+                {
+                    NetworkUnit.Init();
+                    NetworkUnit.SetOwner();
+                }
+                foreach (var item in FilterDropDown.Items)
+                {
+                    if (!item.Data) continue;
+                    var player = VRCPlayerApi.GetPlayerById(item.Data.OwnerID);
+                    if(player != null) item.Title = $"{player.displayName}.{player.playerId}";
+                    else item.Title = "{LOST_TARGET}";
+                }
+            }
         }
 
 
         private void CheckPool()
         {
-            if(NetworkUnit == null)
+            if(NetworkUnit == null) // NetworkUnit을 할당받지 못한 클라가 있을때
             {
                 Networking.SetOwner(Networking.LocalPlayer, UnitPool.gameObject);
                 NetworkUnit = UnitPool.TryToSpawn().GetComponent<UserNetworkUnit>();
-                NetworkUnit.init();
+                NetworkUnit.Init();
                 NetworkUnit.SetOwner();
                 RequestSerialization();
+                Log(this, "Try Set NetworkUnit for LocalPlayer");
             }
 
             if(Networking.IsOwner(Networking.LocalPlayer, NetworkUnit.gameObject))
@@ -251,22 +298,36 @@ namespace K13A.KDebug
                 NetworkUnit.SetOwner();
                 RequestSerialization();
             }
+
+            RequestNextProcess++;
         }
 
         public override void OnPlayerLeft(VRCPlayerApi player)
         {
-            foreach(var unit in UnitPool.Pool)
+            Log(this, $"{player.displayName}.{player.playerId} left the instance.");
+            foreach (var unit in UnitPool.Pool)
             {
                 var n_unit = unit.GetComponent<UserNetworkUnit>();
                 if (VRCPlayerApi.GetPlayerById(n_unit.OwnerID) == null)
                 {
-                    n_unit.ClearLog();
-                    UnitPool.Return(unit);
-                    Debug.Log("Delete " + player.playerId + 1);
-                    FilterDropDown.DeleteItembyData(n_unit); // 앞에 Local과 ALL이 있기떄문에 - 2 해줌
+                    ReturnUnit(n_unit);
+                    return;
+                }else if (player.playerId == n_unit.OwnerID)
+                {
+                    ReturnUnit(n_unit);
                     return;
                 }
             }
+            Log(this, $"Can not find left player {player.displayName}.{player.playerId}");
+        }
+
+        public void ReturnUnit(UserNetworkUnit n_unit)
+        {
+            Log(this, $"Return NetworkUnit by {Networking.LocalPlayer.displayName}.{Networking.LocalPlayer.playerId} | OwnerID: {n_unit.OwnerID}");
+            n_unit.SetOwner();
+            FilterDropDown.DeleteItembyData(n_unit); // 앞에 Local과 ALL이 있기떄문에 - 2 해줌
+            UnitPool.Return(n_unit.gameObject);
+            RequestSerialization();
         }
 
         public void ChangeFilter()
@@ -276,17 +337,17 @@ namespace K13A.KDebug
             {
                 case 0:
                     GlobalAlrt(this, "Change Log Filter -> Local");
-                    logText.text = CutLogs(NetworkUnit.receivedLog, AllowStringCount - 500);
+                    logText.text = NetworkUnit.receivedLog;
                     break;
                 case 1:
                     GlobalAlrt(this, "Change Log Filter -> ALL");
-                    logText.text = CutLogs(AllLogs, AllowStringCount - 500);
+                    logText.text = AllLogs;
                     break;
                 default:
                     GlobalAlrt(this, "Change Log Filter -> Player");
                     var unit = FilterDropDown.GetDataByID(FilterDropDown.SelectedID);
                     if (unit == null) break;
-                    logText.text = CutLogs(unit.receivedLog, AllowStringCount - 500);
+                    logText.text = unit.receivedLog;
                     break;
             }
         }

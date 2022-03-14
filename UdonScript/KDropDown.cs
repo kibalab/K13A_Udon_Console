@@ -58,6 +58,19 @@ namespace K13A.KDebug.UIElement.DropDown
             UpdateItemSetList();
         }
 
+        public void SetItems(UserNetworkUnit[] datas)
+        {
+            var i = 2;
+            foreach (var Item in Items)
+            {
+
+                Item.Title = $"{VRCPlayerApi.GetPlayerById(datas[i].OwnerID)}{datas[i].OwnerID}";
+                Item.Data = datas[i];
+                i++;
+            }
+            ItemCount = i;
+        }
+
         public void DeleteItembyData(UserNetworkUnit data)
         {
             for (var i = 0; i < Items.Length; i++)
@@ -85,6 +98,16 @@ namespace K13A.KDebug.UIElement.DropDown
         }
 
         public UserNetworkUnit GetDataByID(int index) => Items[index].Data;
+
+        public bool IsExists(UserNetworkUnit data)
+        {
+            for (var i = 0; i < ItemCount; i++)
+            {
+                if (Items[i].Data == data) return true;
+            }
+
+            return false;
+        }
 
         public void SetEvent(UdonSharpBehaviour target, string name)
         {
