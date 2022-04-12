@@ -19,7 +19,6 @@ namespace K13A.KDebug
         public string warnColor = "orange";
         public string errorColor = "red";
 
-        [UdonSynced(UdonSyncMode.None), FieldChangeCallback(nameof(RequestNextProcess))] public int ReadyPlayerID = 0;
 
         public int AllowStringCount = 5000;
 
@@ -41,33 +40,9 @@ namespace K13A.KDebug
 
         public override void OnPlayerJoined(VRCPlayerApi player)
         {
-            if (player.playerId == 1)
-            {
-                RequestNextProcess++;
-            }
-        }
-
-        public int RequestNextProcess
-        {
-            set
-            {
-                ReadyPlayerID = value;
-
-                CheckIsProcessable();
-
-                RequestSerialization();
-            }
-
-            get => ReadyPlayerID;
-        }
-
-        public void CheckIsProcessable()
-        {
-            if (ReadyPlayerID + 1 == Networking.LocalPlayer.playerId)
-            {
-                CheckPool();
-                IsPause = false;
-            }
+            //if(!player.Equals(Networking.LocalPlayer))
+            CheckPool();
+            IsPause = false;
         }
 
         public bool IsPause
@@ -298,8 +273,6 @@ namespace K13A.KDebug
                 NetworkUnit.SetOwner();
                 RequestSerialization();
             }
-
-            RequestNextProcess++;
         }
 
         public override void OnPlayerLeft(VRCPlayerApi player)

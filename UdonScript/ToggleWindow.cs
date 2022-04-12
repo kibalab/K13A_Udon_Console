@@ -22,14 +22,6 @@ namespace K13A.KDebug {
             window.gameObject.SetActive(!window.gameObject.activeSelf);
             window.IsPause = !window.gameObject.activeSelf;
         }
-
-        private void Update()
-        {
-            for (var i = 0; i< 10; i++)
-            {
-                window.Log(this, i.ToString());
-            }
-        }
     }
 
 #else
